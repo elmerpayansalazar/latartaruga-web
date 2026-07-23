@@ -1296,7 +1296,8 @@ async function supabaseWrite(tabla, metodo, body, filtro){
 }
 
 // Registra un evento en la tabla `eventos`
-function logEvent(tipo, datos){
+async function logEvent(tipo, datos){
+  await sessionReadyPromise;
   const clienteId = getClienteId();
   supabaseWrite('eventos', 'POST', [{
     sesion_id: sessionId,
@@ -1312,7 +1313,13 @@ function setClienteId(id){
   if(id) sessionStorage.setItem('lt_cliente_id', id);
 }
 
-// Inicia la sesión (una sola vez, vía función de Netlify para poder leer la ciudad)
+// Inicia la sesión (una sola vez, vía función de Netlify para poder leer la ciudad).
+// `sessionReadyPromise` se resuelve cuando la sesión ya quedó creada en Supabase -
+// los eventos y el carrito esperan a que esto termine antes de escribir, para
+// evitar la carrera: "evento de una sesión que todavía no existe".
+let sessionReadyResolve;
+const sessionReadyPromise = new Promise(resolve => { sessionReadyResolve = resolve; });
+
 if(sessionInfo.isNew){
   fetch('/.netlify/functions/track-session', {
     method: 'POST',
@@ -1326,13 +1333,17 @@ if(sessionInfo.isNew){
       navegador: detectBrowser(),
       sistemaOperativo: detectOS(),
     })
-  }).catch(()=>{});
+  }).catch((e)=>{ console.warn('[tracking] No se pudo crear la sesión:', e.message); })
+    .finally(()=>{ sessionReadyResolve(); });
   logEvent('page_view', { pagina: 'inicio' });
+} else {
+  sessionReadyResolve(); // la sesión ya existía de antes en esta pestaña, no hay que esperar
 }
 
 // Sincroniza el estado del carrito en Supabase (para detectar abandono)
-function syncCartToSupabase(){
+async function syncCartToSupabase(){
   if(cart.length === 0) return;
+  await sessionReadyPromise;
   // Solo mandamos los campos esenciales - el carrito completo incluye la foto en
   // base64 de cada producto, que puede pesar cientos de KB y hacía fallar el envío.
   const itemsLivianos = cart.map(i => ({
