@@ -1192,6 +1192,149 @@ function getStoredUtm(){
   catch(e){ return {}; }
 }
 
+// ============================================================
+// TRACKING DE RECORRIDO DEL CLIENTE
+// Identifica visitante + sesión, registra eventos directo en
+// Supabase (llave pública, solo permite insertar/actualizar,
+// nunca leer) y sincroniza el carrito para detectar abandono.
+// ============================================================
+const SUPABASE_URL = "https://uuiadjqlnuwxczxqxufs.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1aWFkanFsbnV3eGN6eHF4dWZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMjU1MjYsImV4cCI6MjA5NzgwMTUyNn0.e3VNdTV9gptltLinHWKIn2xTWaMpP8Ezdvo5FwOaQE8";
+
+function getVisitorId(){
+  let id = localStorage.getItem('lt_visitor_id');
+  if(!id){
+    id = crypto.randomUUID();
+    localStorage.setItem('lt_visitor_id', id);
+  }
+  return id;
+}
+function getSessionId(){
+  let id = sessionStorage.getItem('lt_session_id');
+  let isNew = false;
+  if(!id){
+    id = crypto.randomUUID();
+    sessionStorage.setItem('lt_session_id', id);
+    isNew = true;
+  }
+  return { id, isNew };
+}
+function detectDevice(){
+  const ua = navigator.userAgent;
+  if(/Mobi|Android/i.test(ua)) return 'mobile';
+  if(/Tablet|iPad/i.test(ua)) return 'tablet';
+  return 'desktop';
+}
+function detectBrowser(){
+  const ua = navigator.userAgent;
+  if(ua.includes('Edg')) return 'Edge';
+  if(ua.includes('Chrome')) return 'Chrome';
+  if(ua.includes('Safari') && !ua.includes('Chrome')) return 'Safari';
+  if(ua.includes('Firefox')) return 'Firefox';
+  return 'Otro';
+}
+function detectOS(){
+  const ua = navigator.userAgent;
+  if(ua.includes('Windows')) return 'Windows';
+  if(ua.includes('Mac')) return 'macOS';
+  if(ua.includes('Android')) return 'Android';
+  if(ua.includes('iPhone') || ua.includes('iPad')) return 'iOS';
+  if(ua.includes('Linux')) return 'Linux';
+  return 'Otro';
+}
+
+const visitorId = getVisitorId();
+const sessionInfo = getSessionId();
+const sessionId = sessionInfo.id;
+
+// Supabase REST helper (llave anónima: solo puede insertar/actualizar, nunca leer)
+async function supabaseWrite(tabla, metodo, body, filtro){
+  if(SUPABASE_URL.startsWith('TU_')) return; // aún no configurado, no truena la página
+  try{
+    const url = `${SUPABASE_URL}/rest/v1/${tabla}${filtro || ''}`;
+    await fetch(url, {
+      method: metodo,
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: metodo === 'POST' ? 'resolution=merge-duplicates' : 'return=minimal',
+      },
+      body: JSON.stringify(body),
+    });
+  }catch(e){ /* el tracking nunca debe romper la experiencia del cliente */ }
+}
+
+// Registra un evento en la tabla `eventos`
+function logEvent(tipo, datos){
+  const clienteId = getClienteId();
+  supabaseWrite('eventos', 'POST', [{
+    sesion_id: sessionId,
+    cliente_id: clienteId,
+    tipo,
+    datos: datos || {},
+  }]);
+}
+function getClienteId(){
+  return sessionStorage.getItem('lt_cliente_id') || null;
+}
+function setClienteId(id){
+  if(id) sessionStorage.setItem('lt_cliente_id', id);
+}
+
+// Inicia la sesión (una sola vez, vía función de Netlify para poder leer la ciudad)
+if(sessionInfo.isNew){
+  fetch('/.netlify/functions/track-session', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      visitanteId: visitorId,
+      sesionId: sessionId,
+      utm: getStoredUtm(),
+      referrer: document.referrer || null,
+      dispositivo: detectDevice(),
+      navegador: detectBrowser(),
+      sistemaOperativo: detectOS(),
+    })
+  }).catch(()=>{});
+  logEvent('page_view', { pagina: 'inicio' });
+}
+
+// Sincroniza el estado del carrito en Supabase (para detectar abandono)
+function syncCartToSupabase(){
+  if(cart.length === 0) return;
+  supabaseWrite('carritos', 'POST', [{
+    sesion_id: sessionId,
+    cliente_id: getClienteId(),
+    items: cart,
+    valor_total: cartTotal(),
+    cantidad_productos: cart.reduce((s,i)=>s+i.qty,0),
+    estado: 'activo',
+    ultima_modificacion: new Date().toISOString(),
+  }]);
+}
+
+// Profundidad de scroll: registra hitos de 25/50/75/100% una sola vez cada uno
+const scrollHitos = { 25:false, 50:false, 75:false, 100:false };
+window.addEventListener('scroll', () => {
+  const scrolled = (window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100;
+  [25,50,75,100].forEach(h=>{
+    if(scrolled >= h && !scrollHitos[h]){
+      scrollHitos[h] = true;
+      logEvent('scroll_depth', { porcentaje: h });
+    }
+  });
+});
+
+// Tiempo en página: se registra al salir/cambiar de pestaña
+let tiempoInicio = Date.now();
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden'){
+    const segundos = Math.round((Date.now() - tiempoInicio) / 1000);
+    logEvent('tiempo_en_pagina', { segundos });
+  }
+});
+
 let cart = JSON.parse(sessionStorage.getItem('lt_cart') || 'null') || [];
 const ZONES = [
   {id:201, name:"Domicilio · Cali", price:10000},
@@ -1210,7 +1353,7 @@ function addZoneToCart(zoneId){
 
 function formatCOP(n){ return '$' + n.toLocaleString('es-CO'); }
 
-function saveCart(){ sessionStorage.setItem('lt_cart', JSON.stringify(cart)); renderCart(); }
+function saveCart(){ sessionStorage.setItem('lt_cart', JSON.stringify(cart)); renderCart(); syncCartToSupabase(); }
 
 function addToCart(id, btnEl){
   const p = PRODUCTS.find(x=>x.id===id);
@@ -1234,6 +1377,7 @@ function addToCart(id, btnEl){
       currency: 'COP',
     });
   }
+  logEvent('add_to_cart', { producto_id: p.id, producto_nombre: p.name, precio: p.price });
 }
 let cityToastTimer = null;
 function showCityToast(){
@@ -1257,7 +1401,12 @@ function changeQty(id, delta){
   saveCart();
 }
 
-function removeItem(id){ cart = cart.filter(x=>x.id!==id); saveCart(); }
+function removeItem(id){
+  const removed = cart.find(x=>x.id===id);
+  cart = cart.filter(x=>x.id!==id);
+  saveCart();
+  if(removed && !removed.isZone) logEvent('remove_from_cart', { producto_id: removed.id, producto_nombre: removed.name });
+}
 
 function cartTotal(){ return cart.reduce((s,i)=>s+i.price*i.qty,0); }
 
@@ -1448,10 +1597,20 @@ function openCheckout(){
       num_items: cart.reduce((s,i)=>s+i.qty,0),
     });
   }
+  logEvent('checkout_start', { valor_carrito: cartTotal(), cantidad_productos: cart.reduce((s,i)=>s+i.qty,0) });
+  checkoutEnCurso = true;
 }
-function closeCheckout(){ document.getElementById('checkoutOverlay').classList.remove('show'); }
+let checkoutEnCurso = false;
+function closeCheckout(){
+  document.getElementById('checkoutOverlay').classList.remove('show');
+  if(checkoutEnCurso){
+    logEvent('checkout_abandon', { valor_carrito: cartTotal(), paso: currentCheckoutStep });
+    checkoutEnCurso = false;
+  }
+}
 
 function revealQrSection(){
+  checkoutEnCurso = false;
   document.getElementById('checkoutFieldsWrap').style.display = 'none';
   document.getElementById('checkoutActions').style.display = 'none';
   document.getElementById('qrSection').style.display = 'block';
@@ -1582,6 +1741,8 @@ async function submitOrder(){
 
   const orderData = {
     orderNumber: currentOrderNumber,
+    sesionId: sessionId,
+    visitanteId: visitorId,
     nombre, celular, correo, ciudad, barrio, direccion, fecha, hora,
     esUnidadResidencial, nombreUnidad, bloque, apto,
     de, para, anonimo: pedidoAnonimo, notas,
@@ -1615,12 +1776,14 @@ async function submitOrder(){
         content_ids: [currentOrderNumber],
       });
     }
+    logEvent('purchase', { orden_numero: currentOrderNumber, total: orderData.total, metodo: 'pendiente' });
     return true;
   } catch(err){
     // Red de seguridad: si el envío automático falla, no perdemos el pedido -
     // se abre WhatsApp para que el cliente lo envíe manualmente esta vez.
     alert('Tuvimos un problema enviando tu pedido automáticamente. Vamos a abrir WhatsApp para enviarlo manualmente, ¡no te preocupes, no se pierde tu pedido!');
     waLink(msg);
+    logEvent('purchase_failed', { orden_numero: currentOrderNumber, error: err.message });
     return true;
   } finally {
     submitBtn.textContent = originalLabel;
@@ -1650,6 +1813,7 @@ if(catalogSection){
           });
         }
         catalogObserver.disconnect();
+        logEvent('view_content', { productos_visibles: PRODUCTS.map(p=>p.id) });
       }
     });
   }, {threshold:0.2});
@@ -1666,6 +1830,7 @@ function maybeShowWelcomePopup(){
   if(getActiveDiscount()) return;
   setTimeout(()=>{
     document.getElementById('welcomePopupOverlay').classList.add('show');
+    logEvent('popup_shown', {});
   }, 4000);
 }
 function closeWelcomePopup(){
@@ -1693,10 +1858,11 @@ document.getElementById('welcomePopupForm').addEventListener('submit', async fun
     const res = await fetch('/.netlify/functions/subscribe-popup', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ nombre, celular })
+      body: JSON.stringify({ nombre, celular, visitanteId: visitorId })
     });
     const data = await res.json();
     if(!res.ok || !data.codigo) throw new Error(data.error || 'No se pudo generar el código');
+    if(data.clienteId) setClienteId(data.clienteId);
     if(data.yaUsado){
       alert('Este número ya usó su descuento de bienvenida en una compra anterior. ¡Gracias por volver! 🍷');
       closeWelcomePopup();
@@ -1705,6 +1871,7 @@ document.getElementById('welcomePopupForm').addEventListener('submit', async fun
     sessionStorage.setItem('lt_discount', JSON.stringify({ codigo: data.codigo, redeemed:false }));
     localStorage.setItem('lt_popup_dismissed', '1');
     showWelcomePopupSuccess(data.codigo);
+    logEvent('popup_submitted', { nombre, celular });
     renderCart();
   }catch(err){
     alert('No pudimos generar tu descuento en este momento. Intenta de nuevo en unos segundos.');
