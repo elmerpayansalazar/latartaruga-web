@@ -416,6 +416,21 @@
   .drawer-foot{padding:22px 26px; border-top:1px solid var(--line);}
   .cart-total{display:flex; justify-content:space-between; font-family:'Fraunces'; font-size:1.2rem; margin-bottom:16px;}
   .cart-discount-line{font-size:0.88rem; color:#3f7d4c; margin-top:-10px; margin-bottom:16px; font-family:'Manrope';}
+  .cart-coupon{margin-bottom:16px;}
+  .cart-coupon-toggle{
+    background:none; border:none; padding:0; color:var(--wine); font-size:0.82rem;
+    font-weight:700; text-decoration:underline; cursor:pointer;
+  }
+  .cart-coupon-form{display:flex; gap:8px; margin-top:8px;}
+  .cart-coupon-form input{
+    flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:var(--radius);
+    font-family:'Manrope'; font-size:0.85rem; text-transform:uppercase;
+  }
+  .cart-coupon-form input:focus{outline:none; border-color:var(--gold);}
+  .cart-coupon-form button{padding:10px 16px; font-size:0.82rem;}
+  .cart-coupon-msg{font-size:0.78rem; margin-top:6px; margin-bottom:0;}
+  .cart-coupon-msg.error{color:#b3413a;}
+  .cart-coupon-msg.success{color:#3f7d4c;}
   .empty-cart{text-align:center; padding:60px 20px; color:#9b8574;}
 
   /* ---------- Checkout modal ---------- */
@@ -929,6 +944,14 @@ src="https://www.facebook.com/tr?id=1242477021320613&ev=PageView&noscript=1"
   <div class="drawer-body" id="drawerBody"></div>
   <div class="cart-upsell" id="cartUpsell" style="display:none;"></div>
   <div class="drawer-foot" id="drawerFoot" style="display:none;">
+    <div class="cart-coupon" id="cartCoupon">
+      <button type="button" class="cart-coupon-toggle" id="cartCouponToggle" onclick="toggleCouponInput()">¿Tienes un código de descuento?</button>
+      <div class="cart-coupon-form" id="cartCouponForm" style="display:none;">
+        <input type="text" id="cartCouponInput" placeholder="Ej: BIENVENIDA15-X7K2">
+        <button type="button" class="btn btn-outline" id="cartCouponBtn" onclick="applyManualDiscount()">Aplicar</button>
+      </div>
+      <p class="cart-coupon-msg" id="cartCouponMsg"></p>
+    </div>
     <div class="cart-total"><span>Subtotal</span><span id="cartSubtotal">$0</span></div>
     <div class="cart-total cart-discount-line" id="cartDiscountLine" style="display:none;"><span>Descuento bienvenida (15%)</span><span id="cartDiscountAmount">-$0</span></div>
     <button class="btn btn-wine" style="width:100%; justify-content:center;" onclick="openCheckout()">Finalizar pedido</button>
@@ -1252,7 +1275,7 @@ async function supabaseWrite(tabla, metodo, body, filtro){
   if(SUPABASE_URL.startsWith('TU_')) return; // aún no configurado, no truena la página
   try{
     const url = `${SUPABASE_URL}/rest/v1/${tabla}${filtro || ''}`;
-    await fetch(url, {
+    const res = await fetch(url, {
       method: metodo,
       headers: {
         apikey: SUPABASE_ANON_KEY,
@@ -1262,7 +1285,14 @@ async function supabaseWrite(tabla, metodo, body, filtro){
       },
       body: JSON.stringify(body),
     });
-  }catch(e){ /* el tracking nunca debe romper la experiencia del cliente */ }
+    if(!res.ok){
+      const detalle = await res.text().catch(()=> '');
+      console.warn(`[tracking] Supabase rechazó la escritura en "${tabla}":`, res.status, detalle);
+    }
+  }catch(e){
+    console.warn(`[tracking] Falló la conexión a Supabase para "${tabla}":`, e.message);
+    // el tracking nunca debe romper la experiencia del cliente, por eso no relanzamos el error
+  }
 }
 
 // Registra un evento en la tabla `eventos`
@@ -1303,10 +1333,15 @@ if(sessionInfo.isNew){
 // Sincroniza el estado del carrito en Supabase (para detectar abandono)
 function syncCartToSupabase(){
   if(cart.length === 0) return;
+  // Solo mandamos los campos esenciales - el carrito completo incluye la foto en
+  // base64 de cada producto, que puede pesar cientos de KB y hacía fallar el envío.
+  const itemsLivianos = cart.map(i => ({
+    id: i.id, name: i.name, price: i.price, qty: i.qty, isZone: !!i.isZone,
+  }));
   supabaseWrite('carritos', 'POST', [{
     sesion_id: sessionId,
     cliente_id: getClienteId(),
-    items: cart,
+    items: itemsLivianos,
     valor_total: cartTotal(),
     cantidad_productos: cart.reduce((s,i)=>s+i.qty,0),
     estado: 'activo',
@@ -1427,6 +1462,52 @@ function finalTotal(){
   return cartTotal() - discountAmount();
 }
 
+function toggleCouponInput(){
+  const form = document.getElementById('cartCouponForm');
+  const isHidden = form.style.display === 'none';
+  form.style.display = isHidden ? 'flex' : 'none';
+  if(isHidden) document.getElementById('cartCouponInput').focus();
+}
+
+async function applyManualDiscount(){
+  const input = document.getElementById('cartCouponInput');
+  const msg = document.getElementById('cartCouponMsg');
+  const btn = document.getElementById('cartCouponBtn');
+  const codigo = input.value.trim().toUpperCase();
+  if(!codigo){ return; }
+
+  msg.textContent = '';
+  msg.className = 'cart-coupon-msg';
+  btn.disabled = true;
+  btn.textContent = 'Validando...';
+
+  try{
+    const res = await fetch('/.netlify/functions/validate-discount', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ codigo })
+    });
+    const data = await res.json();
+    if(!res.ok || !data.valid){
+      msg.textContent = data.error || 'Ese código no es válido o ya fue usado.';
+      msg.className = 'cart-coupon-msg error';
+      return;
+    }
+    sessionStorage.setItem('lt_discount', JSON.stringify({ codigo, redeemed:false }));
+    msg.textContent = '¡Código aplicado! 15% de descuento activado.';
+    msg.className = 'cart-coupon-msg success';
+    document.getElementById('cartCouponForm').style.display = 'none';
+    document.getElementById('cartCouponToggle').style.display = 'none';
+    renderCart();
+  }catch(err){
+    msg.textContent = 'No pudimos validar el código en este momento. Intenta de nuevo.';
+    msg.className = 'cart-coupon-msg error';
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Aplicar';
+  }
+}
+
 function renderCart(){
   const body = document.getElementById('drawerBody');
   const foot = document.getElementById('drawerFoot');
@@ -1442,11 +1523,14 @@ function renderCart(){
   const discount = discountAmount();
   document.getElementById('cartSubtotal').textContent = formatCOP(cartTotal());
   const discountLine = document.getElementById('cartDiscountLine');
+  const cartCoupon = document.getElementById('cartCoupon');
   if(discount > 0){
     discountLine.style.display = 'flex';
     document.getElementById('cartDiscountAmount').textContent = '-' + formatCOP(discount);
+    cartCoupon.style.display = 'none';
   } else {
     discountLine.style.display = 'none';
+    cartCoupon.style.display = getActiveDiscount() ? 'none' : 'block';
   }
   body.innerHTML = cart.map(i=>`
     <div class="cart-item">
