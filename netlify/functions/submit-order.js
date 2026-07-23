@@ -6,7 +6,7 @@
 // Variables de entorno necesarias (Netlify → Site configuration → Environment variables):
 //   N8N_WEBHOOK_URL       → la URL del webhook que crees en n8n
 //   N8N_WEBHOOK_SECRET    → una clave inventada por ti, para proteger el webhook
-//   SUPABASE_URL          → https://uuiadjqlnuwxczxqxufs.supabase.co
+//   SUPABASE_URL          → la URL de tu proyecto Supabase (Settings → API → Project URL)
 //   SUPABASE_SERVICE_KEY  → tu llave service_role (secreta)
 
 async function redeemDiscountCode(discountCode, orderNumber) {

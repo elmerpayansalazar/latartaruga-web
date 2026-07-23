@@ -2,7 +2,7 @@
 // genera un código de descuento único y lo guarda en Supabase (tabla popup_contactos).
 //
 // Variables de entorno necesarias (Netlify → Site configuration → Environment variables):
-//   SUPABASE_URL          → https://uuiadjqlnuwxczxqxufs.supabase.co
+//   SUPABASE_URL          → la URL de tu proyecto Supabase (Settings → API → Project URL)
 //   SUPABASE_SERVICE_KEY  → tu llave service_role (secreta, nunca en el código)
 
 exports.handler = async function (event) {
