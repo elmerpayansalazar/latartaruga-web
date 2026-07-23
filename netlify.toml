@@ -1,3 +1,9 @@
 [build]
   functions = "netlify/functions"
   publish = "."
+
+[build.environment]
+  # index.html es un archivo grande con imágenes/video en base64 (texto que parece
+  # aleatorio) - el escaneo de secretos de Netlify puede generar falsos positivos ahí.
+  # No contiene ningún secreto real (esos solo viven en variables de entorno).
+  SECRETS_SCAN_OMIT_PATHS = "index.html"
