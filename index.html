@@ -1299,12 +1299,16 @@ async function supabaseWrite(tabla, metodo, body, filtro){
 async function logEvent(tipo, datos){
   await sessionReadyPromise;
   const clienteId = getClienteId();
-  supabaseWrite('eventos', 'POST', [{
-    sesion_id: sessionId,
-    cliente_id: clienteId,
-    tipo,
-    datos: datos || {},
-  }]);
+  try{
+    const res = await fetch('/.netlify/functions/log-event', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ sesionId: sessionId, clienteId, tipo, datos: datos || {} })
+    });
+    if(!res.ok) console.warn('[tracking] log-event respondió con error:', res.status);
+  }catch(e){
+    console.warn('[tracking] No se pudo registrar el evento:', e.message);
+  }
 }
 function getClienteId(){
   return sessionStorage.getItem('lt_cliente_id') || null;
@@ -1349,15 +1353,22 @@ async function syncCartToSupabase(){
   const itemsLivianos = cart.map(i => ({
     id: i.id, name: i.name, price: i.price, qty: i.qty, isZone: !!i.isZone,
   }));
-  supabaseWrite('carritos', 'POST', [{
-    sesion_id: sessionId,
-    cliente_id: getClienteId(),
-    items: itemsLivianos,
-    valor_total: cartTotal(),
-    cantidad_productos: cart.reduce((s,i)=>s+i.qty,0),
-    estado: 'activo',
-    ultima_modificacion: new Date().toISOString(),
-  }]);
+  try{
+    const res = await fetch('/.netlify/functions/sync-cart', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        sesionId: sessionId,
+        clienteId: getClienteId(),
+        items: itemsLivianos,
+        valorTotal: cartTotal(),
+        cantidadProductos: cart.reduce((s,i)=>s+i.qty,0),
+      })
+    });
+    if(!res.ok) console.warn('[tracking] sync-cart respondió con error:', res.status);
+  }catch(e){
+    console.warn('[tracking] No se pudo sincronizar el carrito:', e.message);
+  }
 }
 
 // Profundidad de scroll: registra hitos de 25/50/75/100% una sola vez cada uno
