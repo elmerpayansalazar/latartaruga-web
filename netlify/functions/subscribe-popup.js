@@ -166,6 +166,15 @@ async function resolverCliente(SUPABASE_URL, headers, nombre, celular, visitante
         headers,
         body: JSON.stringify({ cliente_id: clienteId }),
       }).catch(() => {});
+
+      // Enlaza también los eventos que ya ocurrieron antes de identificarse
+      // (add_to_cart, checkout_start, view_content, etc.) - sin esto, el embudo
+      // de conversión del cliente queda incompleto: solo se ve el evento de compra.
+      await fetch(`${SUPABASE_URL}/rest/v1/eventos?sesion_id=in.${filtroSesiones}&cliente_id=is.null`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ cliente_id: clienteId }),
+      }).catch(() => {});
     }
   }
 

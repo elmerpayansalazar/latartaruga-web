@@ -35,9 +35,12 @@ async function redeemDiscountCode(discountCode, orderNumber) {
 
 /**
  * Crea o recupera el cliente por celular (para pedidos que llegan sin haber
- * pasado por el pop-up, ej. checkout directo), y devuelve su id.
+ * pasado por el pop-up, ej. checkout directo), y devuelve su id. También une
+ * su historial anónimo previo (visitante, sesiones, eventos) a ese cliente,
+ * igual que hace subscribe-popup.js - así el embudo de conversión queda
+ * completo aunque la persona nunca haya usado el pop-up de descuento.
  */
-async function resolverClientePorPedido(nombre, celular) {
+async function resolverClientePorPedido(nombre, celular, visitanteId) {
   const { SUPABASE_URL, SERVICE_KEY, headers } = supabaseConfig();
   if (!SUPABASE_URL || !SERVICE_KEY || !celular) return null;
 
@@ -45,23 +48,54 @@ async function resolverClientePorPedido(nombre, celular) {
   const buscar = await fetch(`${SUPABASE_URL}/rest/v1/clientes?celular=eq.${encodeURIComponent(celularLimpio)}&select=id`, { headers });
   const encontrados = await buscar.json();
 
+  let clienteId;
   if (Array.isArray(encontrados) && encontrados.length > 0) {
-    return encontrados[0].id;
+    clienteId = encontrados[0].id;
+  } else {
+    const crear = await fetch(`${SUPABASE_URL}/rest/v1/clientes`, {
+      method: 'POST',
+      headers: { ...headers, Prefer: 'return=representation' },
+      body: JSON.stringify([{ nombre, celular: celularLimpio, ultimo_evento: 'purchase', estado: 'comprador', lead_score: 60 }]),
+    });
+    const creado = await crear.json();
+    clienteId = creado[0] ? creado[0].id : null;
   }
-  const crear = await fetch(`${SUPABASE_URL}/rest/v1/clientes`, {
-    method: 'POST',
-    headers: { ...headers, Prefer: 'return=representation' },
-    body: JSON.stringify([{ nombre, celular: celularLimpio, ultimo_evento: 'purchase', estado: 'comprador', lead_score: 60 }]),
-  });
-  const creado = await crear.json();
-  return creado[0] ? creado[0].id : null;
+
+  if (clienteId && visitanteId) {
+    await fetch(`${SUPABASE_URL}/rest/v1/visitantes?id=eq.${visitanteId}`, {
+      method: 'PATCH', headers, body: JSON.stringify({ cliente_id: clienteId }),
+    }).catch(() => {});
+
+    const sesionesRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/sesiones?visitante_id=eq.${visitanteId}&select=id`,
+      { headers }
+    );
+    const sesionesDelVisitante = await sesionesRes.json();
+    const sesionIds = Array.isArray(sesionesDelVisitante) ? sesionesDelVisitante.map(s => s.id) : [];
+
+    await fetch(`${SUPABASE_URL}/rest/v1/sesiones?visitante_id=eq.${visitanteId}`, {
+      method: 'PATCH', headers, body: JSON.stringify({ cliente_id: clienteId }),
+    }).catch(() => {});
+
+    if (sesionIds.length > 0) {
+      const filtroSesiones = `(${sesionIds.join(',')})`;
+      await fetch(`${SUPABASE_URL}/rest/v1/carritos?sesion_id=in.${filtroSesiones}&cliente_id=is.null`, {
+        method: 'PATCH', headers, body: JSON.stringify({ cliente_id: clienteId }),
+      }).catch(() => {});
+      await fetch(`${SUPABASE_URL}/rest/v1/eventos?sesion_id=in.${filtroSesiones}&cliente_id=is.null`, {
+        method: 'PATCH', headers, body: JSON.stringify({ cliente_id: clienteId }),
+      }).catch(() => {});
+    }
+  }
+
+  return clienteId;
 }
 
 async function registrarPedidoYActualizarCliente(orderData) {
   const { SUPABASE_URL, SERVICE_KEY, headers } = supabaseConfig();
   if (!SUPABASE_URL || !SERVICE_KEY) return;
 
-  const clienteId = await resolverClientePorPedido(orderData.nombre, orderData.celular);
+  const clienteId = await resolverClientePorPedido(orderData.nombre, orderData.celular, orderData.visitanteId);
 
   await fetch(`${SUPABASE_URL}/rest/v1/pedidos`, {
     method: 'POST',
