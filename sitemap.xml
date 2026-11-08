@@ -1,9 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
     <loc>https://latartaruga.co/</loc>
-    <lastmod>2026-07-09</lastmod>
+    <lastmod>2026-11-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+    <image:image><image:loc>https://latartaruga.co/img/og-navidad.jpg</image:loc><image:title>Catálogo de Navidad 2026 – La Tartaruga</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/litro_consumo.webp</image:loc><image:title>Sangría 1 litro · para consumo – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/litro_detalle.webp</image:loc><image:title>Sangría 1 litro · para detalle – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/caja400.webp</image:loc><image:title>Sangría 400 ml en caja – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/av_senor.webp</image:loc><image:title>Año viejo Señor – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/av_espanta.webp</image:loc><image:title>Año viejo Espantapájaros – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/av_premium.webp</image:loc><image:title>Año viejo Premium – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/cajaav_1l.webp</image:loc><image:title>Sangría 1 litro en caja + año viejo – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/cajaav_400.webp</image:loc><image:title>Sangría 400 ml en caja + año viejo – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/deluxe_av.webp</image:loc><image:title>Ancheta Deluxe año viejo – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/anch_avprem.webp</image:loc><image:title>Ancheta año viejo Premium – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/anch_av.webp</image:loc><image:title>Ancheta año viejo – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/copasdx_2.webp</image:loc><image:title>Copas Deluxe · 2 copas – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/copasdx_1.webp</image:loc><image:title>Copas Deluxe · 1 copa – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/copas_mani.webp</image:loc><image:title>Copas Deluxe con maní – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/copas_peq.webp</image:loc><image:title>Ancheta pequeña Copas – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/mani_dx.webp</image:loc><image:title>Deluxe Maní y chocolates – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/mani_peq.webp</image:loc><image:title>Ancheta pequeña Maní y chocolates – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/virg_dx.webp</image:loc><image:title>Deluxe Virgen – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/virg_peq.webp</image:loc><image:title>Ancheta pequeña Virgen – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/mag_dx.webp</image:loc><image:title>Deluxe Mágica – La Tartaruga Cali</image:title></image:image>
+    <image:image><image:loc>https://latartaruga.co/img/mag_peq.webp</image:loc><image:title>Ancheta pequeña Mágica – La Tartaruga Cali</image:title></image:image>
   </url>
 </urlset>
